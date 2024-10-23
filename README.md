@@ -1,2 +1,6 @@
 # 3rd-year-project
-I hope this goes somewhat well
+
+
+import torch
+torch.cuda.is_available()
+torch.version.cuda
