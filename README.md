@@ -1,3 +1,3 @@
 # 3rd year project
-With the help of chat gpt I got the Fashion MNIST CNN working
+I am working on a siamese network for amoeba data, whether they are in the harmful light beam or not
 
