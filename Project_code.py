@@ -14,9 +14,9 @@ def sanitize_for_windows_path(name):
 	invalid_chars = r'<>:"/\\|?*'
 	return ''.join('_' if c in invalid_chars else c for c in name)
 
-img1_directory = "A:\\3rd_Year_Project\\Project_code\\data\\Siamese_dataset\\img1.npz"
-training_directory = "A:\\3rd_Year_Project\\Project_code\\data\\Siamese_dataset\\15.npz"
-testing_directory = "A:\\3rd_Year_Project\\Project_code\\data\\Siamese_dataset\\2nd.npz"
+img1_directory = "data/img1.npz"
+training_directory = "data/15VariableLabel.npz"
+testing_directory = "data/2nd.npz"
 
 transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
 
@@ -54,10 +54,11 @@ class SiameseNetworkDataset(torch.utils.data.Dataset):
 		img2 = self.img2_images[index]
 		img2 = Image.fromarray(img2).convert("L")
 
-		if self.img1_labels[random_num] == self.img2_labels[index]:
-			label = 0
-		else:
-			label = 1
+		#if self.img1_labels[random_num] == self.img2_labels[index]:
+		#	label = 0
+		#else:
+		#	label = 1
+		label = abs(self.img1_labels[random_num] - self.img2_labels[index])
 
 		if self.transform:
 			img1 = self.transform(img1)
@@ -164,19 +165,20 @@ class RunManager():
         run_duration = time.time() - self.run_start_time
 
         loss = self.epoch_loss / len(self.loader.dataset)
-        accuracy = self.epoch_num_correct / len(self.loader.dataset)
+        #accuracy = self.epoch_num_correct / len(self.loader.dataset)
 
         self.tb.add_scalar('Loss', loss, self.epoch_count)
-        self.tb.add_scalar('Accuracy', accuracy, self.epoch_count)
+        #self.tb.add_scalar('Accuracy', accuracy, self.epoch_count)
 
-    def _get_num_correct(self, preds, labels):
-        return preds.eq(labels).sum().item()
+    #def _get_num_correct(self, preds, labels):
+        #pred_int = preds >= 0.5
+        #return torch.sum(torch.abs(pred_int.float() - labels)).item() / len(labels)
 
     def track_loss(self, loss, batch):
         self.epoch_loss += loss.item() * batch[0].shape[0]
 
-    def track_num_correct(self, preds, labels):
-        self.epoch_num_correct += self._get_num_correct(preds, labels)
+    #def track_num_correct(self, preds, labels):
+        #self.epoch_num_correct += self._get_num_correct(preds, labels)
 
     def inform(self, discrete_n):
         if self.epoch_count % discrete_n == 0:
@@ -188,10 +190,10 @@ class RunManager():
             {'epoch': epoch, 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict(), },
             filename)
 
-params = OrderedDict(lr=[0.001, 0.01, 0.1],
-					 batch_size = [16, 32, 64],
-					 number_epochs=[20],
-					 op=[torch.optim.Adam, torch.optim.SGD])
+params = OrderedDict(lr=[0.0005],
+					 batch_size = [64],
+					 number_epochs=[300],
+					 op=[torch.optim.SGD])
 model = SiameseNetwork()
 m=RunManager()
 b=RunBuilder.get_runs(params)
@@ -235,7 +237,7 @@ def train(net, train_loader, criterion, optimizer, device, number_epochs = run.n
 			loss_contrastive.backward()
 			optimizer.step()
 			running_loss += loss_contrastive.item()
-			predicted = (output < 0.5).float()
+			predicted = torch.tensor([1 if x > 0.5 else 0 for x in output], dtype=torch.float32, device=label.device)
 			correct += (predicted == label).sum().item()
 			total_samples +=label.size(0)
 
