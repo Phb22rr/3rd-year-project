@@ -9,7 +9,7 @@ import torchvision.transforms as transforms
 from PIL import Image
 import csv
 import matplotlib.pyplot as plt
-
+from torch.utils.tensorboard import SummaryWriter
 
 def sanitize_for_windows_path(name):
     invalid_chars = r'<>:"/\\|?*'
@@ -26,24 +26,6 @@ testing_directory = "A:/3rd_Year_Project/Project_code/data/Siamese_dataset/2nd.n
 
 transform = transforms.Compose(
     [transforms.Resize((128, 128)), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
-
-
-class SiameseNetworkDataset():
-    def __init__(self, npz_file=None, transform=None):
-        self.data = np.load(npz_file)
-        self.images = self.data['images']
-        self.transform = self.data['labels']
-        self.transform = transform
-
-    def get__item__(self, index):
-        img = self.images[index]
-        label = self.labels[index]
-        img = Image.fromarray(img)
-        return img, torch.tensor(label, dtype=torch.float32)
-
-    def __len__(self):
-        return len(self.images)
-
 
 class SiameseNetworkDataset(torch.utils.data.Dataset):
     def __init__(self, img1_dir, img2_dir, transform=None):
@@ -63,10 +45,6 @@ class SiameseNetworkDataset(torch.utils.data.Dataset):
         img2 = self.img2_images[index]
         img2 = Image.fromarray(img2).convert("L")
 
-        #if self.img1_labels[random_num] == self.img2_labels[index]: #added this as I may need it for the future
-            #label = 0
-        #else:
-            #label = 1
         label = abs(self.img1_labels[random_num] - self.img2_labels[index])
 
         if self.transform:
@@ -132,9 +110,57 @@ class RunBuilder():
             runs.append(Run(*v))
         return runs
 
-
 class RunManager():
+    def __init__(self):
+        self.epoch_count = 0
+        self.epoch_loss = 0
+        self.epoch_num_correct = 0
+        self.epoch_start_time = None
+
+        self.run_params = None
+        self.run_count = 0
+        self.run_data = []
+        self.run_start_time = None
+
+        self.network = None
+        self.loader = None
+        self.tb = None
+
+    def begin_run(self, run, network, loader):
+        self.run_start_time = time.time()
+        self.run_params = run
+        self.run_count += 1
+        self.network = network
+        self.loader = loader
+        safe_run_name = sanitize_for_windows_path(str(run))
+        self.tb = SummaryWriter(comment=f'-{safe_run_name}')
+
+        # Ensure proper indentation here
+        data_sample = next(iter(self.loader))  # Adjust based on actual output
+
+        # Unpack properly
+        characteristics, labels = data_sample[:2]
+
+    def end_run(self):
+        self.tb.close()
+        self.epoch_count = 0
+
+    def begin_epoch(self):
+        self.epoch_start_time = time.time()
+        self.epoch_count += 1
+        self.epoch_loss = 0
+        self.epoch_num_correct = 0
+
+    def end_epoch(self):
+        epoch_duration = time.time() - self.epoch_start_time
+        run_duration = time.time() - self.run_start_time
+
+    def inform(self, discrete_n):
+        if self.epoch_count % discrete_n == 0:
+            print(self.epoch_count, ' ', self.run_count)
+
     def save_checkpoint(self, model, optimizer, epoch, filename="checkpoint.pth"):
+        print(f"Saving checkpoint at epoch {epoch}")
         torch.save(
             {'epoch': epoch, 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict(), },
             filename)
@@ -151,7 +177,7 @@ class RunManager():
                 #output = model(img1,img2).squeeze(1)
                 #loss_contrastive = criterion(output,label)
                 #loss_history.append(loss_contrastive.item())
-                #predictions = (output <0.5).float()
+                #predictions = (output >0.5).float()
                 #correct += (predictions == label).sum().item()
                 #total += label.size(0)
         #accuracy = correct / total
@@ -160,7 +186,7 @@ class RunManager():
 
 params = OrderedDict(lr=[0.01],
                      batch_size=[16],
-                     number_epochs=[3],
+                     number_epochs=[2],
                      op=[torch.optim.SGD])
 model = SiameseNetwork()
 m = RunManager()
@@ -195,11 +221,14 @@ def train(net, train_loader, criterion, optimizer, device, number_epochs=run.num
     loss_history = []
     epoch_acc = []
     optimizer = run.op(net.parameters(), lr=run.lr)
+    m.begin_run(run, SiameseNetwork(), train_loader)
     for epoch in range(number_epochs):
         total_samples = 0
         net.train()
         running_loss = 0.0
         correct = 0
+        correct01 = 0
+        m.begin_epoch()
         for batch_idx, (img1, img2, label) in enumerate(train_dataloader):
             current_iter = epoch * len(train_dataloader) + batch_idx + 1
             img1, img2, label = img1.cuda(), img2.cuda(), label.cuda()
@@ -209,9 +238,12 @@ def train(net, train_loader, criterion, optimizer, device, number_epochs=run.num
             loss_contrastive.backward()
             optimizer.step()
             running_loss += loss_contrastive.item()
-            predicted = torch.tensor([1 if x > 0.5 else 0 for x in output], dtype=torch.float32, device=label.device)
-            # [(output < 0.5).float()]
-            correct += (predicted == label).sum().item()
+            predicted = torch.round(output * 10) / 10
+            label_rounded = torch.round(label * 10) / 10
+            correct += (predicted == label_rounded).sum().item()
+            predicted01 = torch.round(output)
+            label01 = torch.round(label)
+            correct01 += (predicted01 == label01).sum().item()
             total_samples += label.size(0)
             if total_batches_seen % 100 == 0:
                 end_batch = time.time()
@@ -233,11 +265,16 @@ def train(net, train_loader, criterion, optimizer, device, number_epochs=run.num
             total_batches_seen += 1
 
         accuracy1 = correct / total_samples
+        accuracy01 = correct01 / total_samples
         average_loss = running_loss / len(train_dataloader)
         epoch_acc.append(accuracy1 * 100)
         counter.append(epoch_number)
         epoch_number += 1
         loss_history.append(average_loss)
+        m.tb.add_scalar("Accuracy", accuracy1 * 100, epoch)
+        m.tb.add_scalar("Accuracy for binary labels", accuracy01*100, epoch)
+        m.tb.add_scalar("Loss in def train:", average_loss, epoch)
+        m.end_epoch()
     return net, counter, loss_history, epoch_acc
 
 
@@ -314,6 +351,7 @@ for run in b:
     # writer.writerows(epoch_acc, loss_history)
 
     end_parameter_set = time.time()
+    m.end_run()
 
 headers = ["Epoch Number", "ETA", "Accuracy", "Loss", "Learning Rate", "Batch Size"]
 csv_path = "Optimisation data.csv"
