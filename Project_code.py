@@ -7,7 +7,7 @@ from itertools import product
 from collections import OrderedDict, namedtuple
 import torchvision.transforms as transforms
 from PIL import Image
-import csv
+#import csv
 from torch.utils.tensorboard import SummaryWriter
 
 def sanitize_for_windows_path(name):
@@ -15,26 +15,18 @@ def sanitize_for_windows_path(name):
 	return ''.join('_' if c in invalid_chars else c for c in name)
 
 img1_directory = "data/img1.npz"
-training_directory = "data/15VariableLabel.npz"
+training_directory = "data/15.npz"
 testing_directory = "data/2nd.npz"
+#"data/2ndVariableLabel.npz"
+#"data/15VariableLabel.npz"
+#"data/15.npz"
+#"data/2nd.npz"
+#"data/img1.npz"
+#A:/3rd_Year_Project/Project_code/data/Siamese_dataset/img1.npz
+#A:/3rd_Year_Project/Project_code/data/Siamese_dataset/15.npz
+#A:/3rd_Year_Project/Project_code/data/Siamese_dataset/2nd.npz
 
 transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
-
-#class SiameseNetworkDataset():
-	#def __init__(self, npz_file = None, transform = None):
-		#self.data = np.load(npz_file)
-		#self.images = self.data['images']
-		#self.transform = self.data['labels']
-		#self.transform = transform
-
-	#def get__item__(self, index):
-		#img = self.images[index]
-		#label = self.labels[index]
-		#img = Image.fromarray(img)
-		#return img, torch.tensor(label, dtype= torch.float32)
-
-	#def __len__(self):
-		#return len(self.images)
 
 class SiameseNetworkDataset(torch.utils.data.Dataset):
 	def __init__(self, img1_dir, img2_dir, transform = None):
@@ -189,28 +181,37 @@ class RunManager():
 			{'epoch': epoch, 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict(), },
 			filename)
 
-	#def validate(self, model, validation_dataloader):
-		#model.eval()
-		#correct = 0
-		#total = 0
-		#loss_history = []
-		#with torch.no_grad():
-			#for data in validation_dataloader:
-				#img1, img2, label = data
-				#img1, img2, label = img1.cuda(), img2.cuda(), label.cuda()
-				#output = model(img1,img2).squeeze(1)
-				#loss_contrastive = criterion(output,label)
-				#loss_history.append(loss_contrastive.item())
-				#predictions = (output >0.5).float()
-				#correct += (predictions == label).sum().item()
-				#total += label.size(0)
-		#accuracy = correct / total
-		#avg_loss = sum(loss_history)/len(loss_history)
-		#return accuracy, avg_loss
+	def validate(self, model, validation_dataloader):
+		model.eval()
+		correct = 0
+		total = 0
+		loss_history6 = []
+		total_diff4 = 0
+		with torch.no_grad():
+			for data in validation_dataloader:
+				img1, img2, label = data
+				img1, img2, label = img1.cuda(), img2.cuda(), label.cuda()
+				output = model(img1,img2).squeeze(1)
+				loss_contrastive = criterion(output,label)
+				loss_history6.append(loss_contrastive.item())
 
-params = OrderedDict(lr=[0.05, 0.1],
-					 batch_size = [4, 16, 32, 64],
-					 number_epochs=[100],
+				#predictions5 = torch.round(output * 10) / 10
+				#label_rounded5 = torch.round(label * 10) / 10
+				predictions5 = torch.round(output)
+				label_rounded5 = torch.round(label)
+
+				difference4 = ((output - label)**2)**0.5
+				total_diff4 += difference4.sum().item()
+
+				#correct += (predictions5 == label_rounded5).sum().item()
+				total += label.size(0)
+		val_accuracy = 1-(total_diff4 / total)
+		val_avg_loss = sum(loss_history6)/len(loss_history6)
+		return val_accuracy, val_avg_loss
+
+params = OrderedDict(lr=[0.075],
+					 batch_size = [64],
+					 number_epochs=[2000],
 					 op=[torch.optim.SGD])
 model = SiameseNetwork()
 m=RunManager()
@@ -221,34 +222,44 @@ for run in b:
 	else:
 		optimizer = run.op(model.parameters(), lr=run.lr, eps=1e-8, weight_decay=0.0005)
 
-siamese_dataset = SiameseNetworkDataset(img1_dir=img1_directory,
-										img2_dir = training_directory,
-										transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]))
+img1_dir = img1_directory
+img2_dir = training_directory
+
+siamese_dataset = SiameseNetworkDataset(img1_dir=img1_dir,img2_dir = img2_dir,transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]))
+
 train_dataloader = DataLoader(siamese_dataset,
 							  shuffle=True,
 							  num_workers=0,
 							  batch_size=run.batch_size,
 							  pin_memory = True)
-#val_dataset = SiameseNetworkDataset(img1_directory,testing_directory,
-                                    #transform=transforms.Compose([transforms.Resize((128,128)),transforms.ToTensor()]))
-#validation_dataloader = DataLoader(val_dataset,shuffle = False,num_workers = 0,batch_size = run.batch_size,pin_memory = True)
+
+val_dataset = SiameseNetworkDataset(img1_dir,testing_directory,
+                                    transform=transforms.Compose([transforms.Resize((128,128)),transforms.ToTensor()]))
+validation_dataloader = DataLoader(val_dataset,shuffle = False,num_workers = 0,batch_size = 1,pin_memory = True)
 
 def train(net, train_loader, criterion, optimizer, device, number_epochs = run.number_epochs):
 	total_batches_seen = 1
-	total_batches = len(train_dataloader)*number_epochs
+	total_batches = len(train_loader)*number_epochs
 	net.to(device)
 	epoch_number = 1
+	best_validation_loss = 100
 	counter = []
 	loss_history = []
 	epoch_acc = []
 	optimizer = run.op(net.parameters(),lr=run.lr)
+
+	scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.7)
+
 	m.begin_run(run, SiameseNetwork(), train_loader)
 	for epoch in range(number_epochs):
+		siamese_dataset1 = SiameseNetworkDataset(img1_dir=img1_dir, img2_dir=img2_dir, transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]))
+		train_dataloader = DataLoader(siamese_dataset1, shuffle=True, num_workers=0, batch_size = run.batch_size, pin_memory = True)
+
 		total_samples = 0
 		net.train()
 		running_loss = 0.0
-		correct = 0
 		correct01 = 0
+		total_difference = 0
 		m.begin_epoch()
 		for batch_idx, (img1, img2, label) in enumerate(train_dataloader):
 			current_iter = epoch*len(train_dataloader) + batch_idx + 1
@@ -259,9 +270,12 @@ def train(net, train_loader, criterion, optimizer, device, number_epochs = run.n
 			loss_contrastive.backward()
 			optimizer.step()
 			running_loss += loss_contrastive.item()
-			predicted = torch.round(output*10)/10
-			label_rounded = torch.round(label*10)/10
-			correct += (predicted == label_rounded).sum().item()
+
+			predicted = output
+			label = label
+			difference = ((output - label)**2)**0.5
+			total_difference += difference.sum().item()
+
 			predicted01 = torch.round(output)
 			label01 = torch.round(label)
 			correct01 += (predicted01 == label01).sum().item()
@@ -270,7 +284,7 @@ def train(net, train_loader, criterion, optimizer, device, number_epochs = run.n
 			m.track_loss(loss_contrastive, (img1, img2, label))
 			m.track_num_correct(predicted, label)
 
-			if total_batches_seen % 100 ==0:
+			if total_batches_seen % (len(train_dataloader)) ==0:
 				end_batch = time.time()
 				time_training = end_batch - start_whole_run
 
@@ -288,10 +302,11 @@ def train(net, train_loader, criterion, optimizer, device, number_epochs = run.n
 				print(f"run {percent_complete:.2f}%", "Epoch:", epoch, 
 					  f" ETA: {days1}d {hours1}h {minutes1}m {seconds1}s")
 			total_batches_seen += 1
+		scheduler.step()
 
-		accuracy_cont = correct /total_samples
+		accuracy_cont = 1- (total_difference /total_samples)
 		accuracy01 = correct01/total_samples
-		average_loss = running_loss /len(train_dataloader)
+		average_loss = running_loss /len(train_loader)
 		epoch_acc.append(accuracy_cont* 100)
 		counter.append(epoch_number)
 		epoch_number += 1
@@ -301,7 +316,18 @@ def train(net, train_loader, criterion, optimizer, device, number_epochs = run.n
 		m.tb.add_scalar("Accuracy for binary labels", accuracy01 * 100, epoch)
 		m.tb.add_scalar("Loss", average_loss, epoch)
 		m.end_epoch()
+
+		if average_loss < 0.01:
+			if average_loss < best_validation_loss:
+				best_validation_loss = average_loss
+				best_model = net
+				best_optimizer1 = optimizer
+				filename = f"best_cnn/BestRun_lr{run.lr}_bs{run.batch_size}_epoch{epoch}_op{run.op}_acc{accuracy_cont*100:.4f}loss{best_validation_loss:.5f}.pth"
+				m.save_checkpoint(best_model, best_optimizer1, epoch, filename=filename)
+				val_acc, val_loss = m.validate(best_model, validation_dataloader)
+				print(f"New best! Val Acc: {(val_acc*100):.4f}, Loss:", f"{(best_validation_loss):.5f}")
 	return net, counter, loss_history, epoch_acc
+
 best_validation_accuracy = 0.0
 best_model = None
 best_optimizer = None
@@ -323,7 +349,6 @@ hours1 = 0
 minutes1 = 0
 seconds1 = 0
 end_parameter_set = 0
-best_validation_loss = 100
 
 for run in b:
 	torch.cuda.empty_cache()
@@ -338,12 +363,13 @@ for run in b:
 	post_train_time = time.time()
 	total_time = post_train_time - pre_train_time
 	#accuracy, avg_loss = m.validate(model, validation_dataloader)
-	Epoch_num.append(run.number_epochs)
-	ETA_list.append(total_time)
-	Accuracy_list.append(epoch_acc[-1])
-	Loss_list.append(loss_history[-1])
-	Batch_size_list.append(run.batch_size)
-	learning_rate_list.append(run.lr)
+
+	#Epoch_num.append(run.number_epochs)
+	#ETA_list.append(total_time)
+	#Accuracy_list.append(epoch_acc[-1])
+	#Loss_list.append(loss_history[-1])
+	#Batch_size_list.append(run.batch_size)
+	#learning_rate_list.append(run.lr)
 
 	accuracy = epoch_acc[-1]
 	loss = loss_history[-1]
@@ -357,23 +383,17 @@ for run in b:
 		#filename = f"BestRun_lr{run.lr}_bs{run.batch_size}_epoch{run.number_epochs}_op{run.op}_acc{(best_validation_accuracy):.0f}_loss{(loss):.2f}.pth"
 		#m.save_checkpoint(model, optimizer, run.number_epochs, filename = filename)
 		#print("New best!!! ", f"Accuracy:{best_validation_accuracy:.3f}", "Loss:", f"{loss:.3f}")
-	if loss < best_validation_loss:
-		best_validation_loss = loss
-		best_model = model
-		best_optimizer1 = optimizer
-		filename = f"BestRun_lr{run.lr}_bs{run.batch_size}_epoch{run.number_epochs}_op{run.op}_acc{accuracy:.1f}loss{best_validation_loss:.3f}.pth"
-		m.save_checkpoint(model, optimizer, run.number_epochs, filename = filename)
-		print(f"New best!!! Accuracy: {(accuracy):.2f}, Loss:", f"{(best_validation_loss):.3f}")
 
 	end_parameter_set = time.time()
 	m.end_run()
 
-headers = ["Epoch Number", "ETA", "Accuracy", "Loss","Learning Rate", "Batch Size"]
-csv_path = "Optimisation data.csv"
-rows = zip(Epoch_num, ETA_list, Accuracy_list, Loss_list, learning_rate_list, Batch_size_list)
-with open(csv_path,"w", newline="") as file:
-	writer = csv.writer(file)
-	writer.writerow(headers)
-	for row in rows:
-		writer.writerow(row)
+#headers = ["Epoch Number", "ETA", "Accuracy", "Loss","Learning Rate", "Batch Size"]
+#csv_path = "Optimisation data.csv"
+#rows = zip(Epoch_num, ETA_list, Accuracy_list, Loss_list, learning_rate_list, Batch_size_list)
+#with open(csv_path,"w", newline="") as file:
+#	writer = csv.writer(file)
+#	writer.writerow(headers)
+#	for row in rows:
+#		writer.writerow(row)
+
 print("Optimisation complete")
