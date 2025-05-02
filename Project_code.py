@@ -15,8 +15,8 @@ def sanitize_for_windows_path(name):
 	return ''.join('_' if c in invalid_chars else c for c in name)
 
 img1_directory = "data/img1.npz"
-training_directory = "data/15.npz"
-testing_directory = "data/2nd.npz"
+training_directory = "data/train_data.npz"
+testing_directory = "data/test_data.npz"
 #"data/2ndVariableLabel.npz"
 #"data/15VariableLabel.npz"
 #"data/15.npz"
@@ -26,18 +26,27 @@ testing_directory = "data/2nd.npz"
 #A:/3rd_Year_Project/Project_code/data/Siamese_dataset/15.npz
 #A:/3rd_Year_Project/Project_code/data/Siamese_dataset/2nd.npz
 
-transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
-
+transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()])
 class SiameseNetworkDataset(torch.utils.data.Dataset):
 	def __init__(self, img1_dir, img2_dir, transform = None):
 		self.img1_data = np.load(img1_dir)
 		self.img1_images = self.img1_data['images']
 		self.img1_labels = self.img1_data['labels']
+		self.min_val1 = np.min(self.img1_images)
+		self.max_val1 = np.max(self.img1_images)
+		self.img1_images_rescaled = ((self.img1_images - self.min_val1) / (self.max_val1 - self.min_val1)) * 255
+		self.img1_images = self.img1_images_rescaled
 
 		self.img2_data = np.load(img2_dir)
 		self.img2_images = self.img2_data['images']
 		self.img2_labels = self.img2_data['labels']
+		self.min_val2 = np.min(self.img2_images)
+		self.max_val2 = np.max(self.img2_images)
+		self.img2_images_rescaled = ((self.img2_images - self.min_val2) / (self.max_val2 - self.min_val2)) * 255
+		self.img2_images = self.img2_images_rescaled
+
 		self.transform = transform
+
 
 	def __getitem__(self, index):
 		random_index = np.random.choice(len(self.img1_images))
@@ -209,7 +218,7 @@ class RunManager():
 		val_avg_loss = sum(loss_history6)/len(loss_history6)
 		return val_accuracy, val_avg_loss
 
-params = OrderedDict(lr=[0.075],
+params = OrderedDict(lr=[0.1],
 					 batch_size = [64],
 					 number_epochs=[2000],
 					 op=[torch.optim.SGD])
@@ -222,7 +231,7 @@ for run in b:
 	else:
 		optimizer = run.op(model.parameters(), lr=run.lr, eps=1e-8, weight_decay=0.0005)
 
-img1_dir = img1_directory
+img1_dir = training_directory
 img2_dir = training_directory
 
 siamese_dataset = SiameseNetworkDataset(img1_dir=img1_dir,img2_dir = img2_dir,transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]))
@@ -233,7 +242,7 @@ train_dataloader = DataLoader(siamese_dataset,
 							  batch_size=run.batch_size,
 							  pin_memory = True)
 
-val_dataset = SiameseNetworkDataset(img1_dir,testing_directory,
+val_dataset = SiameseNetworkDataset(testing_directory, testing_directory,
                                     transform=transforms.Compose([transforms.Resize((128,128)),transforms.ToTensor()]))
 validation_dataloader = DataLoader(val_dataset,shuffle = False,num_workers = 0,batch_size = 1,pin_memory = True)
 
@@ -248,13 +257,12 @@ def train(net, train_loader, criterion, optimizer, device, number_epochs = run.n
 	epoch_acc = []
 	optimizer = run.op(net.parameters(),lr=run.lr)
 
-	scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.7)
+	scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=300, gamma=0.7)
 
 	m.begin_run(run, SiameseNetwork(), train_loader)
 	for epoch in range(number_epochs):
-		siamese_dataset1 = SiameseNetworkDataset(img1_dir=img1_dir, img2_dir=img2_dir, transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]))
-		train_dataloader = DataLoader(siamese_dataset1, shuffle=True, num_workers=0, batch_size = run.batch_size, pin_memory = True)
-
+		#siamese_dataset1 = SiameseNetworkDataset(img1_dir=img1_dir, img2_dir=img2_dir, transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]))
+		#train_dataloader = DataLoader(siamese_dataset1, shuffle=True, num_workers=0, batch_size = run.batch_size, pin_memory = True)
 		total_samples = 0
 		net.train()
 		running_loss = 0.0
@@ -317,7 +325,7 @@ def train(net, train_loader, criterion, optimizer, device, number_epochs = run.n
 		m.tb.add_scalar("Loss", average_loss, epoch)
 		m.end_epoch()
 
-		if average_loss < 0.01:
+		if average_loss < 0.1:
 			if average_loss < best_validation_loss:
 				best_validation_loss = average_loss
 				best_model = net

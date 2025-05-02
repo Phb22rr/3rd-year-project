@@ -41,7 +41,7 @@ class SiameseNetwork(nn.Module):
 		output = 1-torch.sigmoid(score)
 		return output
 
-CNN_directory = r"BestRun_acc98.7_loss0.009_healthy-binary.pth"
+CNN_directory = r"BestRun_lr0.075_bs64_loss0.001_binary-binary.pth"
 checkpoint = torch.load(CNN_directory)
 model = SiameseNetwork()
 model.load_state_dict(checkpoint["model_state_dict"])
@@ -53,10 +53,19 @@ class SiameseNetworkDataset(torch.utils.data.Dataset):
 		self.img1_data = np.load(img1_dir)
 		self.img1_images = self.img1_data['images']
 		self.img1_labels = self.img1_data['labels']
+		self.min_val1 = np.min(self.img1_images)
+		self.max_val1 = np.max(self.img1_images)
+		self.img1_images_rescaled = ((self.img1_images - self.min_val1) / (self.max_val1 - self.min_val1)) * 255
+		self.img1_images = self.img1_images_rescaled
 
 		self.img2_data = np.load(img2_dir)
 		self.img2_images = self.img2_data['images']
 		self.img2_labels = self.img2_data['labels']
+		self.min_val2 = np.min(self.img2_images)
+		self.max_val2 = np.max(self.img2_images)
+		self.img2_images_rescaled = ((self.img2_images - self.min_val2) / (self.max_val2 - self.min_val2)) * 255
+		self.img2_images = self.img2_images_rescaled
+
 		self.transform = transform
 
 	def __getitem__(self, index):
@@ -92,10 +101,10 @@ transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTens
 
 img1_directory = "data/img1.npz"
 training_directory = "data/15VariableLabel.npz"
-training_directory10 = "data/15.npz"
+training_directory10 = "data/train_data.npz"
 
 testing_directory = "data/2ndVariableLabel.npz"
-testing_directory10 = "data/2nd.npz"
+testing_directory10 = "data/test_data.npz"
 
 training_framenumber = np.load("framenumber15.npy")
 testing_framenumber = np.load("framenumber2nd.npy")
@@ -123,13 +132,16 @@ train_dataloader = DataLoader(siamese_dataset,
 mean = []
 start = time.time()
 imageNo = 0
-iterations = 1000
+iterations = 100
 all_lists = {}
 criterion = ContrastiveLoss()
 lossmean = []
 all_loss_lists = {}
 
 for j in range(iterations):
+	#siamese_dataset = SiameseNetworkDataset(img1_dir=img1_dir, img2_dir=img2_dir, transform=transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]))
+	#train_dataloader = DataLoader(siamese_dataset, shuffle=False, num_workers=0, batch_size=1, pin_memory=True)
+
 	current_list = []
 	asdfjkl = []
 	lossky = []
@@ -149,7 +161,7 @@ for j in range(iterations):
 		#labels = torch.round(label).item() #binary, either 0=healthy or 1=dead
 
 		difference = ((output - label)**2)**0.5
-		accuracy = (1 - difference)*100
+		accuracy = (1 - difference.item())*100
 
 		listy.append(accuracy)
 
@@ -169,7 +181,7 @@ for j in range(iterations):
 	minutes1 = int((time_left % 3600) // 60)
 	seconds1 = int(time_left % 60)
 	print(f"Code {(((j+1)/iterations))*100:.0f}% complete", f"ETA:{hours1}h, {minutes1} min, {seconds1} sec")
-	#print(f"Average: {np.mean(asdfjkl):0f}")
+	print(f"Average acc: {np.mean(asdfjkl):0f}, loss: {np.mean(lossky):4f}")
 
 print(int(np.mean(mean) * 100) / 100)
 print(int(np.mean(lossmean) * 100) / 100)
@@ -184,7 +196,7 @@ print(f"Number of images: {len(mean_per_image)}")
 print(f"Average loss: {mean_loss}")
 
 #FrameNumber=training_framenumber + 1 #for training data
-FrameNumber=testing_framenumber + 1   #for testing data
+FrameNumber=testing_framenumber   #for testing data
 
 FrameNumber = FrameNumber.tolist()
 #print(len(FrameNumber), len(listy))
@@ -214,11 +226,11 @@ for i in range(len(FrameNumber)):
 		losspy.append(np.mean(loss_list))
 		lossstd.append(np.std(loss_list))
 
-writer = SummaryWriter(log_dir = fr"A:\3rd_Year_Project\Project_code\data\Accuracy per frame: CNN={CNN_directory}, Data={img1_dir}-{img2_dir}, Iterations={iterations}")
+writer = SummaryWriter(log_dir = "Frame runs")#fr"A:\3rd_Year_Project\Project_code\data\Accuracy per frame: CNN={CNN_directory}, Data={img1_dir}-{img2_dir}, Iterations={iterations}")
 
 for i in range(len(framey)):
-        writer.add_scalar("Accuracy per frame number", meany[i], framey[i])
-        writer.add_scalar("Accuracy per frame number", losspy[i], framey[i])
+		writer.add_scalar("Accuracy per frame number", meany[i], framey[i])
+		writer.add_scalar("Loss per frame number", losspy[i], framey[i])
 
 filename = fr"Acc_per_frame_CNN=_, Data=_-_, Iterations=_.npz"
 np.savez_compressed(filename, frameNumber = np.array(framey), Accuracy = np.array(meany), stdAcc = np.array(std), Loss = np.array(losspy), LossStd = np.array(lossstd))
