@@ -32,7 +32,7 @@ class SiameseNetworkDataset(torch.utils.data.Dataset):
 		self.img1_data = np.load(img1_dir)
 		self.img1_images = self.img1_data['images']
 		self.img1_labels = self.img1_data['labels']
-		self.min_val1 = np.min(self.img1_images)
+		self.min_val1 = np.min(self.img1_images) #This has to be done else the images turn back into the masks for whatever reason, I think it is becuase they are not scaled according to the way it expects them to load
 		self.max_val1 = np.max(self.img1_images)
 		self.img1_images_rescaled = ((self.img1_images - self.min_val1) / (self.max_val1 - self.min_val1)) * 255
 		self.img1_images = self.img1_images_rescaled
@@ -40,13 +40,12 @@ class SiameseNetworkDataset(torch.utils.data.Dataset):
 		self.img2_data = np.load(img2_dir)
 		self.img2_images = self.img2_data['images']
 		self.img2_labels = self.img2_data['labels']
-		self.min_val2 = np.min(self.img2_images)
+		self.min_val2 = np.min(self.img2_images) #same as long bit of text above, I really hate that this needs to be done and more so that it actually works
 		self.max_val2 = np.max(self.img2_images)
 		self.img2_images_rescaled = ((self.img2_images - self.min_val2) / (self.max_val2 - self.min_val2)) * 255
 		self.img2_images = self.img2_images_rescaled
 
-		self.transform = transform
-
+		self.transform = transform #this is the little menace that was messign with the data in an unsatisfactory way
 
 	def __getitem__(self, index):
 		random_index = np.random.choice(len(self.img1_images))
@@ -256,21 +255,18 @@ def train(net, train_loader, criterion, optimizer, device, number_epochs = run.n
 	loss_history = []
 	epoch_acc = []
 	optimizer = run.op(net.parameters(),lr=run.lr)
-
 	scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=300, gamma=0.7)
 
 	m.begin_run(run, SiameseNetwork(), train_loader)
 	for epoch in range(number_epochs):
-		#siamese_dataset1 = SiameseNetworkDataset(img1_dir=img1_dir, img2_dir=img2_dir, transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]))
-		#train_dataloader = DataLoader(siamese_dataset1, shuffle=True, num_workers=0, batch_size = run.batch_size, pin_memory = True)
 		total_samples = 0
 		net.train()
 		running_loss = 0.0
 		correct01 = 0
 		total_difference = 0
 		m.begin_epoch()
-		for batch_idx, (img1, img2, label) in enumerate(train_dataloader):
-			current_iter = epoch*len(train_dataloader) + batch_idx + 1
+		for batch_idx, (img1, img2, label) in enumerate(train_loader):
+			current_iter = epoch*len(train_loader) + batch_idx + 1
 			img1, img2, label = img1.cuda(), img2.cuda(), label.cuda()
 			optimizer.zero_grad()
 			output = net(img1, img2).squeeze(1)
@@ -330,10 +326,10 @@ def train(net, train_loader, criterion, optimizer, device, number_epochs = run.n
 				best_validation_loss = average_loss
 				best_model = net
 				best_optimizer1 = optimizer
-				filename = f"best_cnn/BestRun_lr{run.lr}_bs{run.batch_size}_epoch{epoch}_op{run.op}_acc{accuracy_cont*100:.4f}loss{best_validation_loss:.5f}.pth"
-				m.save_checkpoint(best_model, best_optimizer1, epoch, filename=filename)
 				val_acc, val_loss = m.validate(best_model, validation_dataloader)
 				print(f"New best! Val Acc: {(val_acc*100):.4f}, Loss:", f"{(best_validation_loss):.5f}")
+				filename = f"best_cnn/BestRun_lr{run.lr}_bs{run.batch_size}_epoch{epoch}_Valacc{val_acc*100:.2f}loss{best_validation_loss:.5f}.pth"
+				m.save_checkpoint(best_model, best_optimizer1, epoch, filename=filename)
 	return net, counter, loss_history, epoch_acc
 
 best_validation_accuracy = 0.0
