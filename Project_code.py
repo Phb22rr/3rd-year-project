@@ -25,6 +25,7 @@ testing_directory = "data/test_data.npz"
 #A:/3rd_Year_Project/Project_code/data/Siamese_dataset/img1.npz
 #A:/3rd_Year_Project/Project_code/data/Siamese_dataset/15.npz
 #A:/3rd_Year_Project/Project_code/data/Siamese_dataset/2nd.npz
+#"A:/3rd_Year_Project/Project_code/data/Combined_datasets/test_data.npz"
 
 transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()])
 class SiameseNetworkDataset(torch.utils.data.Dataset):
@@ -32,6 +33,7 @@ class SiameseNetworkDataset(torch.utils.data.Dataset):
 		self.img1_data = np.load(img1_dir)
 		self.img1_images = self.img1_data['images']
 		self.img1_labels = self.img1_data['labels']
+		self.img1_frames = self.img1_data['frames']
 		self.min_val1 = np.min(self.img1_images) #This has to be done else the images turn back into the masks for whatever reason, I think it is becuase they are not scaled according to the way it expects them to load
 		self.max_val1 = np.max(self.img1_images)
 		self.img1_images_rescaled = ((self.img1_images - self.min_val1) / (self.max_val1 - self.min_val1)) * 255
@@ -40,6 +42,7 @@ class SiameseNetworkDataset(torch.utils.data.Dataset):
 		self.img2_data = np.load(img2_dir)
 		self.img2_images = self.img2_data['images']
 		self.img2_labels = self.img2_data['labels']
+		self.img2_frames = self.img2_data['frames']
 		self.min_val2 = np.min(self.img2_images) #same as long bit of text above, I really hate that this needs to be done and more so that it actually works
 		self.max_val2 = np.max(self.img2_images)
 		self.img2_images_rescaled = ((self.img2_images - self.min_val2) / (self.max_val2 - self.min_val2)) * 255
@@ -48,17 +51,24 @@ class SiameseNetworkDataset(torch.utils.data.Dataset):
 		self.transform = transform #this is the little menace that was messign with the data in an unsatisfactory way
 
 	def __getitem__(self, index):
-		random_index = np.random.choice(len(self.img1_images))
-		random_num = random_index
-		img1 = Image.fromarray(self.img1_images[random_num]).convert("L")
+		applicable_img1_indexes = []
+		for i in range(len(self.img1_images)): # this loop is made to only select random images from the same frame as the subject image to get the same level of phototoxicity between the frames, thereby making the 0 or one labelling system accurate
+			if i != index: #To avoid the same images being passed through in the event I put the same directories in
+				if self.img1_frames[i] == self.img2_frames[index]:
+					applicable_img1_indexes.append(i)
+
+		random_index = np.random.choice(applicable_img1_indexes)
+		#random_index = np.random.choice(len(self.img1_images)) #The old but still useful way I did it before I came to this revelation
+
+		img1 = Image.fromarray(self.img1_images[random_index]).convert("L")
 		img2 = self.img2_images[index]
 		img2 = Image.fromarray(img2).convert("L")
 
-		#if self.img1_labels[random_num] == self.img2_labels[index]:
+		#if self.img1_labels[random_index] == self.img2_labels[index]:
 		#	label = 0
 		#else:
 		#	label = 1
-		label = abs(self.img1_labels[random_num] - self.img2_labels[index])
+		label = abs(self.img1_labels[random_index] - self.img2_labels[index])
 
 		if self.transform:
 			img1 = self.transform(img1)
@@ -326,7 +336,11 @@ def train(net, train_loader, criterion, optimizer, device, number_epochs = run.n
 				best_validation_loss = average_loss
 				best_model = net
 				best_optimizer1 = optimizer
+
 				val_acc, val_loss = m.validate(best_model, validation_dataloader)
+				#m.tb.add_scalar("Validation Loss", val_loss, epoch)
+				m.tb.add_scalar("Validation Accuracy", val_acc*100, epoch)
+
 				print(f"New best! Val Acc: {(val_acc*100):.4f}, Loss:", f"{(best_validation_loss):.5f}")
 				filename = f"best_cnn/BestRun_lr{run.lr}_bs{run.batch_size}_epoch{epoch}_Valacc{val_acc*100:.2f}loss{best_validation_loss:.5f}.pth"
 				m.save_checkpoint(best_model, best_optimizer1, epoch, filename=filename)

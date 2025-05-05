@@ -27,7 +27,7 @@ class SiameseNetwork(nn.Module):
 								  nn.MaxPool2d(3, stride = 2), nn.Dropout2d(p=0.3), )
 
 		self.fc1 = nn.Sequential(nn.Linear(43264,1024), nn.ReLU(inplace=True),
-								 nn.Dropout(p=0.5),
+								 nn.Dropout(p=0.2),
 								 nn.Linear(1024, 128),
 								 nn.ReLU(inplace=True),
 								 nn.Linear(128, 1))
