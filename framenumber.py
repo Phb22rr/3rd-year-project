@@ -41,7 +41,7 @@ class SiameseNetwork(nn.Module):
 		output = 1-torch.sigmoid(score)
 		return output
 
-CNN_directory = r"BestRun_lr0.075_bs64_loss0.001_binary-binary.pth"
+CNN_directory = r"BestRun_Valacc72.40loss0.00242_combineddata.pth"
 checkpoint = torch.load(CNN_directory)
 model = SiameseNetwork()
 model.load_state_dict(checkpoint["model_state_dict"])
@@ -53,7 +53,8 @@ class SiameseNetworkDataset(torch.utils.data.Dataset):
 		self.img1_data = np.load(img1_dir)
 		self.img1_images = self.img1_data['images']
 		self.img1_labels = self.img1_data['labels']
-		self.min_val1 = np.min(self.img1_images)
+		self.img1_frames = self.img1_data['frames']
+		self.min_val1 = np.min(self.img1_images) #This has to be done else the images turn back into the masks for whatever reason, I think it is becuase they are not scaled according to the way it expects them to load
 		self.max_val1 = np.max(self.img1_images)
 		self.img1_images_rescaled = ((self.img1_images - self.min_val1) / (self.max_val1 - self.min_val1)) * 255
 		self.img1_images = self.img1_images_rescaled
@@ -61,31 +62,40 @@ class SiameseNetworkDataset(torch.utils.data.Dataset):
 		self.img2_data = np.load(img2_dir)
 		self.img2_images = self.img2_data['images']
 		self.img2_labels = self.img2_data['labels']
-		self.min_val2 = np.min(self.img2_images)
+		self.img2_frames = self.img2_data['frames']
+		self.min_val2 = np.min(self.img2_images) #same as long bit of text above, I really hate that this needs to be done and more so that it actually works
 		self.max_val2 = np.max(self.img2_images)
 		self.img2_images_rescaled = ((self.img2_images - self.min_val2) / (self.max_val2 - self.min_val2)) * 255
 		self.img2_images = self.img2_images_rescaled
 
-		self.transform = transform
+		self.transform = transform #this is the little menace that was messign with the data in an unsatisfactory way
 
 	def __getitem__(self, index):
-		random_index = np.random.choice(len(self.img1_images))
-		random_num = random_index
-		img1 = Image.fromarray(self.img1_images[random_num]).convert("L")
+		applicable_img1_indexes = []
+		for i in range(len(self.img1_images)): # this loop is made to only select random images from the same frame as the subject image to get the same level of phototoxicity between the frames, thereby making the 0 or one labelling system accurate
+			if i != index: #To avoid the same images being passed through in the event I put the same directories in
+				if self.img1_frames[i] == self.img2_frames[index]:
+					applicable_img1_indexes.append(i)
+
+		random_index = np.random.choice(applicable_img1_indexes)
+		#random_index = np.random.choice(len(self.img1_images)) #The old but still useful way I did it before I came to this revelation
+
+		img1 = Image.fromarray(self.img1_images[random_index]).convert("L")
 		img2 = self.img2_images[index]
 		img2 = Image.fromarray(img2).convert("L")
 
-		#if self.img1_labels[random_num] == self.img2_labels[index]:
+		#if self.img1_labels[random_index] == self.img2_labels[index]:
 		#	label = 0
 		#else:
 		#	label = 1
-		label = abs(self.img1_labels[random_num] - self.img2_labels[index])
+		label = abs(self.img1_labels[random_index] - self.img2_labels[index])
 
 		if self.transform:
 			img1 = self.transform(img1)
 			img2 = self.transform(img2)
 		label = torch.tensor(float(label), dtype=torch.float32).squeeze(0)
 		return img1, img2, label
+
 	def __len__(self):
 		return len(self.img2_images)
 
@@ -100,24 +110,24 @@ class ContrastiveLoss(torch.nn.Module):
 transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
 
 img1_directory = "data/img1.npz"
-training_directory = "data/15VariableLabel.npz"
-training_directory10 = "data/train_data.npz"
+#training_directory = "data/15VariableLabel.npz"
+training_directory10 = "data/combined_train_data.npz"
 
-testing_directory = "data/2ndVariableLabel.npz"
-testing_directory10 = "data/test_data.npz"
+#testing_directory = "data/2ndVariableLabel.npz"
+testing_directory10 = "data/combined_test_data.npz"
 
-training_framenumber = np.load("framenumber15.npy")
-testing_framenumber = np.load("framenumber2nd.npy")
+training_framenumber = np.load(training_directory10)["frames"]
+testing_framenumber = np.load(testing_directory10)["frames"]
 
-y = np.load(training_directory)
-print(y.files)
-print(y["labels"].shape)
+#y = np.load(training_directory)
+#print(y.files)
+#print(y["labels"].shape)
 
-x = np.load(testing_directory)
-print(x["labels"].shape)
+#x = np.load(testing_directory)
+#print(x["labels"].shape)
 
 #choose which directory you want
-img1_dir = testing_directory10
+img1_dir = training_directory10
 img2_dir = testing_directory10
 
 siamese_dataset = SiameseNetworkDataset(img1_dir=img1_dir,
@@ -132,7 +142,7 @@ train_dataloader = DataLoader(siamese_dataset,
 mean = []
 start = time.time()
 imageNo = 0
-iterations = 100
+iterations = 1000
 all_lists = {}
 criterion = ContrastiveLoss()
 lossmean = []

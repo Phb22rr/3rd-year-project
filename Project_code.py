@@ -14,9 +14,9 @@ def sanitize_for_windows_path(name):
 	invalid_chars = r'<>:"/\\|?*'
 	return ''.join('_' if c in invalid_chars else c for c in name)
 
-img1_directory = "data/img1.npz"
-training_directory = "data/train_data.npz"
-testing_directory = "data/test_data.npz"
+img1_directory = "data/15.npz"
+training_directory = "data/15.npz"
+testing_directory = "data/2nd.npz"
 #"data/2ndVariableLabel.npz"
 #"data/15VariableLabel.npz"
 #"data/15.npz"
@@ -240,7 +240,7 @@ for run in b:
 	else:
 		optimizer = run.op(model.parameters(), lr=run.lr, eps=1e-8, weight_decay=0.0005)
 
-img1_dir = training_directory
+img1_dir = img1_directory
 img2_dir = training_directory
 
 siamese_dataset = SiameseNetworkDataset(img1_dir=img1_dir,img2_dir = img2_dir,transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]))
