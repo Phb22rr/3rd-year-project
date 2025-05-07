@@ -227,9 +227,9 @@ class RunManager():
 		val_avg_loss = sum(loss_history6)/len(loss_history6)
 		return val_accuracy, val_avg_loss
 
-params = OrderedDict(lr=[0.1],
+params = OrderedDict(lr=[0.0001, 0.001, 0.01, 0.1],
 					 batch_size = [64],
-					 number_epochs=[2000],
+					 number_epochs=[100],
 					 op=[torch.optim.SGD])
 model = SiameseNetwork()
 m=RunManager()
@@ -251,7 +251,7 @@ train_dataloader = DataLoader(siamese_dataset,
 							  batch_size=run.batch_size,
 							  pin_memory = True)
 
-val_dataset = SiameseNetworkDataset(testing_directory, testing_directory,
+val_dataset = SiameseNetworkDataset(training_directory, testing_directory,
                                     transform=transforms.Compose([transforms.Resize((128,128)),transforms.ToTensor()]))
 validation_dataloader = DataLoader(val_dataset,shuffle = False,num_workers = 0,batch_size = 1,pin_memory = True)
 

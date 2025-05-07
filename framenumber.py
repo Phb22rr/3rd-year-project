@@ -41,7 +41,7 @@ class SiameseNetwork(nn.Module):
 		output = 1-torch.sigmoid(score)
 		return output
 
-CNN_directory = r"BestRun_Valacc72.40loss0.00242_combineddata.pth"
+CNN_directory = r"best_cnn/BestRun_lr0.1_bs64_epoch744_Valacc49.88loss0.00002.pth"
 checkpoint = torch.load(CNN_directory)
 model = SiameseNetwork()
 model.load_state_dict(checkpoint["model_state_dict"])
@@ -111,13 +111,13 @@ transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTens
 
 img1_directory = "data/img1.npz"
 #training_directory = "data/15VariableLabel.npz"
-training_directory10 = "data/combined_train_data.npz"
+training_directory10 = "data/15.npz"
 
-#testing_directory = "data/2ndVariableLabel.npz"
+testing_directory = "data/2nd.npz"
 testing_directory10 = "data/combined_test_data.npz"
 
 training_framenumber = np.load(training_directory10)["frames"]
-testing_framenumber = np.load(testing_directory10)["frames"]
+testing_framenumber = np.load(testing_directory)["frames"]
 
 #y = np.load(training_directory)
 #print(y.files)
@@ -127,10 +127,10 @@ testing_framenumber = np.load(testing_directory10)["frames"]
 #print(x["labels"].shape)
 
 #choose which directory you want
-img1_dir = training_directory10
-img2_dir = testing_directory10
+img1_dir = testing_directory
+img2_dir = testing_directory
 
-siamese_dataset = SiameseNetworkDataset(img1_dir=img1_dir,
+siamese_dataset = SiameseNetworkDataset(img1_dir=img2_dir,
                                         img2_dir=img2_dir,
                                         transform=transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]))
 train_dataloader = DataLoader(siamese_dataset,
@@ -142,7 +142,7 @@ train_dataloader = DataLoader(siamese_dataset,
 mean = []
 start = time.time()
 imageNo = 0
-iterations = 1000
+iterations = 100
 all_lists = {}
 criterion = ContrastiveLoss()
 lossmean = []
@@ -236,7 +236,7 @@ for i in range(len(FrameNumber)):
 		losspy.append(np.mean(loss_list))
 		lossstd.append(np.std(loss_list))
 
-writer = SummaryWriter(log_dir = "Frame runs")#fr"A:\3rd_Year_Project\Project_code\data\Accuracy per frame: CNN={CNN_directory}, Data={img1_dir}-{img2_dir}, Iterations={iterations}")
+writer = SummaryWriter(log_dir = fr"runs/Framenumber{CNN_directory}")#fr"A:\3rd_Year_Project\Project_code\data\Accuracy per frame: CNN={CNN_directory}, Data={img1_dir}-{img2_dir}, Iterations={iterations}")
 
 for i in range(len(framey)):
 		writer.add_scalar("Accuracy per frame number", meany[i], framey[i])
