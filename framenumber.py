@@ -41,7 +41,7 @@ class SiameseNetwork(nn.Module):
 		output = 1-torch.sigmoid(score)
 		return output
 
-CNN_directory = r"best_cnn/BestRun_lr0.1_bs64_epoch744_Valacc49.88loss0.00002.pth"
+CNN_directory = r"BestRun_loss0.00001_TrainBinary-TrainBinary.pth"
 checkpoint = torch.load(CNN_directory)
 model = SiameseNetwork()
 model.load_state_dict(checkpoint["model_state_dict"])
@@ -127,10 +127,10 @@ testing_framenumber = np.load(testing_directory)["frames"]
 #print(x["labels"].shape)
 
 #choose which directory you want
-img1_dir = testing_directory
+img1_dir = training_directory10
 img2_dir = testing_directory
 
-siamese_dataset = SiameseNetworkDataset(img1_dir=img2_dir,
+siamese_dataset = SiameseNetworkDataset(img1_dir=img1_dir,
                                         img2_dir=img2_dir,
                                         transform=transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]))
 train_dataloader = DataLoader(siamese_dataset,
@@ -187,7 +187,7 @@ for j in range(iterations):
 	averageTime = (now - start)/(j+1)
 	loops_left = iterations - (j+1)
 	time_left = loops_left * averageTime
-	hours1 = int(time_left % 86400 // 3600)
+	hours1 = int(time_left// 3600)
 	minutes1 = int((time_left % 3600) // 60)
 	seconds1 = int(time_left % 60)
 	print(f"Code {(((j+1)/iterations))*100:.0f}% complete", f"ETA:{hours1}h, {minutes1} min, {seconds1} sec")
