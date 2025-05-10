@@ -41,7 +41,7 @@ class SiameseNetwork(nn.Module):
 		output = 1-torch.sigmoid(score)
 		return output
 
-CNN_directory = r"BestRun_loss0.00001_TrainBinary-TrainBinary.pth"
+CNN_directory = r"BestRun_Valacc72.40loss0.00242_combineddata.pth"
 checkpoint = torch.load(CNN_directory)
 model = SiameseNetwork()
 model.load_state_dict(checkpoint["model_state_dict"])
@@ -111,24 +111,14 @@ transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTens
 
 img1_directory = "data/img1.npz"
 #training_directory = "data/15VariableLabel.npz"
-training_directory10 = "data/15.npz"
+training_directory10 = "data/combined_train_data.npz"
 
 testing_directory = "data/2nd.npz"
 testing_directory10 = "data/combined_test_data.npz"
 
-training_framenumber = np.load(training_directory10)["frames"]
-testing_framenumber = np.load(testing_directory)["frames"]
-
-#y = np.load(training_directory)
-#print(y.files)
-#print(y["labels"].shape)
-
-#x = np.load(testing_directory)
-#print(x["labels"].shape)
-
 #choose which directory you want
-img1_dir = training_directory10
-img2_dir = testing_directory
+img1_dir = testing_directory10
+img2_dir = testing_directory10
 
 siamese_dataset = SiameseNetworkDataset(img1_dir=img1_dir,
                                         img2_dir=img2_dir,
@@ -205,8 +195,7 @@ mean_loss = np.mean(array1, axis=0)
 print(f"Number of images: {len(mean_per_image)}")
 print(f"Average loss: {mean_loss}")
 
-#FrameNumber=training_framenumber + 1 #for training data
-FrameNumber=testing_framenumber   #for testing data
+FrameNumber=img2_dir["frames"]
 
 FrameNumber = FrameNumber.tolist()
 #print(len(FrameNumber), len(listy))

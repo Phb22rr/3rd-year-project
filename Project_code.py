@@ -16,7 +16,7 @@ def sanitize_for_windows_path(name):
 
 img1_directory = "data/15.npz"
 training_directory = "data/15.npz"
-testing_directory = "data/2nd.npz"
+testing_directory = "data/2nd(ext).npz"
 #"data/2ndVariableLabel.npz"
 #"data/15VariableLabel.npz"
 #"data/15.npz"
@@ -53,7 +53,7 @@ class SiameseNetworkDataset(torch.utils.data.Dataset):
 	def __getitem__(self, index):
 		applicable_img1_indexes = []
 		for i in range(len(self.img1_images)): # this loop is made to only select random images from the same frame as the subject image to get the same level of phototoxicity between the frames, thereby making the 0 or one labelling system accurate
-			if i != index and self.img1_frames[i] == self.img2_frames[index]: #To avoid the same images being passed through when I put the same directories in. Also specifies only images in the same frame can be compared.
+			if self.img1_frames[i] == self.img2_frames[index] and not np.array_equal(self.img1_images[i], self.img2_images[index]): #To avoid the same images being passed through when I put the same directories in. Also specifies only images in the same frame can be compared.
 				applicable_img1_indexes.append(i)
 
 		random_index = np.random.choice(applicable_img1_indexes)
@@ -228,7 +228,7 @@ class RunManager():
 
 params = OrderedDict(lr=[0.1],
 					 batch_size = [64],
-					 number_epochs=[100],
+					 number_epochs=[2000],
 					 op=[torch.optim.SGD])
 model = SiameseNetwork()
 m=RunManager()
@@ -242,7 +242,7 @@ for run in b:
 img1_dir = training_directory
 img2_dir = testing_directory
 
-siamese_dataset = SiameseNetworkDataset(img1_dir=img1_dir,img2_dir = img2_dir,transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]))
+siamese_dataset = SiameseNetworkDataset(img1_dir=img2_dir,img2_dir = img2_dir,transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor()]))
 
 train_dataloader = DataLoader(siamese_dataset,
 							  shuffle=True,
@@ -250,7 +250,7 @@ train_dataloader = DataLoader(siamese_dataset,
 							  batch_size=run.batch_size,
 							  pin_memory = True)
 
-val_dataset = SiameseNetworkDataset(training_directory, training_directory,
+val_dataset = SiameseNetworkDataset(img1_dir, img1_dir,
                                     transform=transforms.Compose([transforms.Resize((128,128)),transforms.ToTensor()]))
 validation_dataloader = DataLoader(val_dataset,shuffle = False,num_workers = 0,batch_size = 1,pin_memory = True)
 
