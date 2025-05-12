@@ -9,6 +9,10 @@ import time
 #import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
 
+def sanitize_for_windows_path(name):
+	invalid_chars = r'<>:"/\\|?*'
+	return ''.join('_' if c in invalid_chars else c for c in name)
+
 class SiameseNetwork(nn.Module):
 	def __init__(self):
 		super(SiameseNetwork,self).__init__()
@@ -41,7 +45,7 @@ class SiameseNetwork(nn.Module):
 		output = 1-torch.sigmoid(score)
 		return output
 
-CNN_directory = r"BestRun_Valacc72.40loss0.00242_combineddata.pth"
+CNN_directory = r"BestRun_loss0.00162_2nd-2nd.pth"
 checkpoint = torch.load(CNN_directory)
 model = SiameseNetwork()
 model.load_state_dict(checkpoint["model_state_dict"])
@@ -76,6 +80,8 @@ class SiameseNetworkDataset(torch.utils.data.Dataset):
 			if i != index: #To avoid the same images being passed through in the event I put the same directories in
 				if self.img1_frames[i] == self.img2_frames[index]:
 					applicable_img1_indexes.append(i)
+		if len(applicable_img1_indexes) == 0: #if there are no applicable indexes for image 2, pick a random amoeba from image directory 1. 
+			applicable_img1_indexes.append(np.random.randint(len(self.img1_images)))
 
 		random_index = np.random.choice(applicable_img1_indexes)
 		#random_index = np.random.choice(len(self.img1_images)) #The old but still useful way I did it before I came to this revelation
@@ -110,15 +116,15 @@ class ContrastiveLoss(torch.nn.Module):
 transform = transforms.Compose([transforms.Resize((128, 128)), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
 
 img1_directory = "data/img1.npz"
-#training_directory = "data/15VariableLabel.npz"
+training_directory = "data/15.npz"
 training_directory10 = "data/combined_train_data.npz"
 
 testing_directory = "data/2nd.npz"
 testing_directory10 = "data/combined_test_data.npz"
 
 #choose which directory you want
-img1_dir = testing_directory10
-img2_dir = testing_directory10
+img1_dir = training_directory
+img2_dir = training_directory
 
 siamese_dataset = SiameseNetworkDataset(img1_dir=img1_dir,
                                         img2_dir=img2_dir,
@@ -195,7 +201,8 @@ mean_loss = np.mean(array1, axis=0)
 print(f"Number of images: {len(mean_per_image)}")
 print(f"Average loss: {mean_loss}")
 
-FrameNumber=img2_dir["frames"]
+img2 = np.load(img2_dir)
+FrameNumber=img2["frames"]
 
 FrameNumber = FrameNumber.tolist()
 #print(len(FrameNumber), len(listy))
@@ -231,7 +238,10 @@ for i in range(len(framey)):
 		writer.add_scalar("Accuracy per frame number", meany[i], framey[i])
 		writer.add_scalar("Loss per frame number", losspy[i], framey[i])
 
-filename = fr"Acc_per_frame_CNN=_, Data=_-_, Iterations=_.npz"
+filename = fr"Acc_per_frame_CNN={CNN_directory}, Data={img1_dir}-{img2_dir}, Iterations={iterations}.npz"
+
+filename = sanitize_for_windows_path(filename)
+
 np.savez_compressed(filename, frameNumber = np.array(framey), Accuracy = np.array(meany), stdAcc = np.array(std), Loss = np.array(losspy), LossStd = np.array(lossstd))
 print("img1_directory:", img1_dir)
 print("img2_directory:", img2_dir)
